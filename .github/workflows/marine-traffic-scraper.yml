@@ -111,11 +111,18 @@ jobs:
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         
         # Run the scraper
-        python github_action_scraper.py \
-          --mmsi "${{ env.MMSI }}" \
-          $([ -n "${{ env.COMPARISON_ID }}" ] && echo "--comparison-id \"${{ env.COMPARISON_ID }}\"") \
-          $([ "${{ env.HEADLESS }}" = "true" ] && echo "--headless") \
-          $([ "${{ env.SEND_TO_POSTHOG }}" = "true" ] && echo "--send-to-posthog")
+        if [ -n "${{ env.COMPARISON_ID }}" ]; then
+          python github_action_scraper.py \
+            --mmsi "${{ env.MMSI }}" \
+            --comparison-id "${{ env.COMPARISON_ID }}" \
+            --headless \
+            --send-to-posthog
+        else
+          python github_action_scraper.py \
+            --mmsi "${{ env.MMSI }}" \
+            --headless \
+            --send-to-posthog
+        fi
     
     - name: Upload logs on failure
       if: failure()
