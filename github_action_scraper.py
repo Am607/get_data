@@ -30,9 +30,16 @@ def fetch_datadocked_data(mmsi: str, api_key: str, base_url: str, data_type: str
         
         if api_result.status_code == 200:
             response_json = api_result.json()
-            if response_json:
-                logger.info(f"[{data_type.upper()}] SUCCESS - Got data for MMSI {mmsi}")
-                return response_json
+            logger.info(f"[{data_type.upper()}] RAW RESPONSE - {response_json}")
+            
+            if response_json:  # Check if response is not empty
+                # Check if the response contains valid vessel data
+                if response_json.get("detail") or (response_json.get("mmsi") and response_json.get("latitude") and response_json.get("longitude")):
+                    logger.info(f"[{data_type.upper()}] SUCCESS - Got valid data for MMSI {mmsi}")
+                    return response_json
+                else:
+                    logger.warning(f"[{data_type.upper()}] NO VESSEL DATA - API returned response but no vessel data for MMSI {mmsi}")
+                    return None
             else:
                 logger.warning(f"[{data_type.upper()}] EMPTY - API returned empty data for MMSI {mmsi}")
                 return None
@@ -61,10 +68,15 @@ def send_to_posthog(data: dict, event_name: str, distinct_id: str, comparison_id
         logger.info(f"Processing {data_source} data for PostHog: {data}")
         logger.info(f"PostHog comparison_id: {comparison_id}")
         
+        # Clean MMSI - remove quotes if present
+        mmsi_value = data.get("mmsi")
+        if mmsi_value and isinstance(mmsi_value, str):
+            mmsi_value = mmsi_value.strip('"')
+        
         # Format data according to your specification
         posthog_properties = {
             "provider": data_source,
-            "mmsi": str(data.get("mmsi", "")),
+            "mmsi": str(mmsi_value) if mmsi_value else str(data.get("mmsi", "")),
             "name": data.get("name"),
             "callsign": data.get("callsign"),
             "type": data.get("typeSpecific") if data_source != "MarineTraffic" else data.get("type"),
@@ -100,28 +112,57 @@ def send_to_posthog(data: dict, event_name: str, distinct_id: str, comparison_id
         return False
 
 
+def has_valid_data(data: dict) -> bool:
+    """Check if data has valid vessel information"""
+    if not data:
+        return False
+    
+    # Check if key fields have data
+    mmsi = data.get("mmsi")
+    lat = data.get("latitude") or data.get("lat")
+    lon = data.get("longitude") or data.get("lon")
+    
+    return mmsi is not None and str(mmsi).strip() != "None" and lat is not None and lon is not None
+
+
 def push_all_data_to_posthog(marinetraffic_data: dict, datadocked_data: dict, datadocked_satellite_data: dict, mmsi: str, comparison_id: str):
     """Push all three data sources to PostHog"""
     success_count = 0
+    total_sources = 0
     
     # Send MarineTraffic data
     if marinetraffic_data:
+        total_sources += 1
         if send_to_posthog(marinetraffic_data, "local_comparison", "selenium_scraper", comparison_id, "MarineTraffic"):
             success_count += 1
+        else:
+            logger.error("Failed to send MarineTraffic data to PostHog")
     
     # Send Datadocked data
     if datadocked_data:
         dd_detail = datadocked_data.get("detail", datadocked_data)
-        if send_to_posthog(dd_detail, "local_comparison", "selenium_scraper", comparison_id, "datadocked"):
-            success_count += 1
+        total_sources += 1
+        if has_valid_data(dd_detail):
+            if send_to_posthog(dd_detail, "local_comparison", "selenium_scraper", comparison_id, "datadocked"):
+                success_count += 1
+            else:
+                logger.error("Failed to send Datadocked data to PostHog")
+        else:
+            logger.warning("Skipping Datadocked data - no valid vessel data received")
     
     # Send Datadocked Satellite data
     if datadocked_satellite_data:
         dd_sat_detail = datadocked_satellite_data.get("detail", datadocked_satellite_data)
-        if send_to_posthog(dd_sat_detail, "local_comparison", "selenium_scraper", comparison_id, "datadocked_satellite"):
-            success_count += 1
+        total_sources += 1
+        if has_valid_data(dd_sat_detail):
+            if send_to_posthog(dd_sat_detail, "local_comparison", "selenium_scraper", comparison_id, "datadocked_satellite"):
+                success_count += 1
+            else:
+                logger.error("Failed to send Datadocked Satellite data to PostHog")
+        else:
+            logger.warning("Skipping Datadocked Satellite data - no valid vessel data received")
     
-    logger.warning(f"Successfully pushed {success_count}/3 data sources to PostHog for MMSI {mmsi}")
+    logger.warning(f"Successfully pushed {success_count}/{total_sources} valid data sources to PostHog for MMSI {mmsi}")
 
 
 def main():
