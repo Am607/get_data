@@ -2,5 +2,5 @@ selenium==4.15.2
 requests==2.31.0
 beautifulsoup4==4.12.2
 lxml==4.9.3
-posthog==3.0.20
+posthog>=6.4.1
 python-dateutil>=2.8.0
