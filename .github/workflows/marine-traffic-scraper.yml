@@ -43,7 +43,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget unzip xvfb
+        sudo apt-get install -y wget unzip xvfb jq
         
         # Install Chrome
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
@@ -51,12 +51,33 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
         
-        # Install ChromeDriver
-        CHROME_VERSION=$(google-chrome --version | cut -d " " -f3 | cut -d "." -f1)
-        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}")
-        wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
+        # Get Chrome version and install matching ChromeDriver
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+        echo "Chrome version: $CHROME_VERSION"
+        
+        # Use Chrome for Testing API to get matching ChromeDriver
+        MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d "." -f1)
+        CHROMEDRIVER_JSON=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json")
+        
+        # Find the matching ChromeDriver version
+        CHROMEDRIVER_VERSION=$(echo $CHROMEDRIVER_JSON | jq -r ".versions[] | select(.version | startswith(\"$MAJOR_VERSION\")) | .version" | tail -n1)
+        
+        if [ -z "$CHROMEDRIVER_VERSION" ]; then
+          # Fallback to a known working version
+          CHROMEDRIVER_VERSION="120.0.6099.109"
+        fi
+        
+        echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
+        
+        # Download and install ChromeDriver
+        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
+        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
         sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
         sudo chmod +x /usr/local/bin/chromedriver
+        
+        # Verify installation
+        chromedriver --version
+        google-chrome --version
     
     - name: Install Python dependencies
       run: |
