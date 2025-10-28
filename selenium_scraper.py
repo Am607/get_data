@@ -1338,19 +1338,31 @@ def get_ship_data_selenium(mmsi: str, headless: bool = True, comparison_id: str 
         # Send to PostHog if requested
         if send_to_posthog:
             scraper.send_to_posthog(ship_data, comparison_id)
-        # Test ChromeDriver
+        
+        return ship_data
+        
+    except Exception as e:
+        logger.error(f"Error scraping ship data: {e}")
+        raise
+    finally:
+        scraper.cleanup()
+
+
+if __name__ == "__main__":
+    # Test ChromeDriver availability
+    try:
         options = Options()
         options.add_argument('--headless')
         driver = webdriver.Chrome(options=options)
         driver.quit()
         print("ChromeDriver is available")
-        
     except Exception as e:
         print(f"ChromeDriver not available: {e}")
         print("Please install ChromeDriver:")
         print("1. Download from: https://chromedriver.chromium.org/")
         print("2. Or install via brew: brew install chromedriver")
         print("3. Or install via pip: pip install webdriver-manager")
+        import sys
         sys.exit(1)
     
     # Test with provided MMSI
@@ -1358,7 +1370,7 @@ def get_ship_data_selenium(mmsi: str, headless: bool = True, comparison_id: str 
     
     try:
         print(f"Testing Selenium scraper with MMSI: {test_mmsi}")
-        ship_data = get_ship_data_selenium(test_mmsi, headless=False)  # Show browser for demo
+        ship_data = get_ship_data_selenium(test_mmsi, headless=True)
         
         print("\nExtracted ship data:")
         print(json.dumps(ship_data, indent=2, default=str))
