@@ -36,48 +36,49 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+        cache: 'pip'
     
-    - name: Install system dependencies
+    - name: Setup Chrome and ChromeDriver
+      uses: browser-actions/setup-chrome@v1
+      with:
+        chrome-version: stable
+    
+    - name: Install ChromeDriver
       run: |
-        sudo apt-get update
-        sudo apt-get install -y wget unzip xvfb jq
-        
-        # Install Chrome
-        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-        sudo apt-get update
-        sudo apt-get install -y google-chrome-stable
-        
-        # Get Chrome version and install matching ChromeDriver
+        # Get installed Chrome version
         CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
         echo "Chrome version: $CHROME_VERSION"
-        
-        # Use Chrome for Testing API to get matching ChromeDriver
         MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d "." -f1)
-        CHROMEDRIVER_JSON=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json")
         
-        # Find the matching ChromeDriver version
-        CHROMEDRIVER_VERSION=$(echo $CHROMEDRIVER_JSON | jq -r ".versions[] | select(.version | startswith(\"$MAJOR_VERSION\")) | .version" | tail -n1)
+        # Use a known stable ChromeDriver version
+        CHROMEDRIVER_VERSION="120.0.6099.109"
         
-        if [ -z "$CHROMEDRIVER_VERSION" ]; then
-          # Fallback to a known working version
-          CHROMEDRIVER_VERSION="120.0.6099.109"
+        # Try to get matching version from Chrome for Testing
+        CHROMEDRIVER_JSON=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" || echo "")
+        if [ ! -z "$CHROMEDRIVER_JSON" ]; then
+          MATCHED_VERSION=$(echo $CHROMEDRIVER_JSON | jq -r ".versions[] | select(.version | startswith(\"$MAJOR_VERSION\")) | .version" | tail -n1 || echo "")
+          if [ ! -z "$MATCHED_VERSION" ]; then
+            CHROMEDRIVER_VERSION=$MATCHED_VERSION
+          fi
         fi
         
         echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
         
         # Download and install ChromeDriver
-        CHROMEDRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
-        wget -O /tmp/chromedriver.zip "$CHROMEDRIVER_URL"
-        sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
+        wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
+        unzip -q /tmp/chromedriver.zip -d /tmp/
+        sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
         sudo chmod +x /usr/local/bin/chromedriver
+        rm -rf /tmp/chromedriver-linux64 /tmp/chromedriver.zip
         
-        # Verify installation
+        # Verify
         chromedriver --version
-        google-chrome --version
+    
+    - name: Install Xvfb for headless display
+      run: sudo apt-get install -y -qq xvfb
     
     - name: Install Python dependencies
       run: |
