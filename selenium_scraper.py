@@ -1124,6 +1124,7 @@ class SeleniumMarineTrafficScraper:
             timestamp_iso = timestamp_dt.isoformat()
             
             logger.info(f"Processing MarineTraffic Selenium data for PostHog: {ship_data}")
+            logger.info(f"PostHog comparison_id: {comparison_id}")
             
             # Format data according to your specification
             posthog_properties = {
@@ -1145,6 +1146,8 @@ class SeleniumMarineTrafficScraper:
                 "comparison_id": comparison_id,
                 "data_source": "selenium_scraper"
             }
+            
+            logger.info(f"PostHog properties to send: {posthog_properties}")
             
             # Send to PostHog
             posthog.capture(

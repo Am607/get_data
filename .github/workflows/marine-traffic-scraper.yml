@@ -113,7 +113,7 @@ jobs:
         # Run the scraper
         python github_action_scraper.py \
           --mmsi "${{ env.MMSI }}" \
-          --comparison-id "${{ env.COMPARISON_ID }}" \
+          $([ -n "${{ env.COMPARISON_ID }}" ] && echo "--comparison-id \"${{ env.COMPARISON_ID }}\"") \
           $([ "${{ env.HEADLESS }}" = "true" ] && echo "--headless") \
           $([ "${{ env.SEND_TO_POSTHOG }}" = "true" ] && echo "--send-to-posthog")
     

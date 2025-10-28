@@ -58,9 +58,11 @@ def main():
             
             # Output summary for GitHub Actions
             print(f"::notice title=Scraping Success::Successfully scraped data for MMSI {args.mmsi}")
-            print(f"::set-output name=ship_name::{ship_data.get('name', 'Unknown')}")
-            print(f"::set-output name=latitude::{ship_data.get('lat', 'N/A')}")
-            print(f"::set-output name=longitude::{ship_data.get('lon', 'N/A')}")
+            # Use Environment Files instead of deprecated set-output
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+                print(f"ship_name={ship_data.get('name', 'Unknown')}", file=fh)
+                print(f"latitude={ship_data.get('lat', 'N/A')}", file=fh)
+                print(f"longitude={ship_data.get('lon', 'N/A')}", file=fh)
             
         else:
             logger.error("❌ No data extracted")
