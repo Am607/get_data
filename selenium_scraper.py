@@ -1333,7 +1333,7 @@ def get_ship_data_selenium(mmsi: str, headless: bool = True, comparison_id: str 
     scraper = SeleniumMarineTrafficScraper(headless=headless)
     
     try:
-        ship_data = scraper.scrape_ship_data(mmsi)
+        ship_data = scraper.get_ship_details(mmsi)
         
         # Send to PostHog if requested
         if send_to_posthog:
@@ -1345,7 +1345,7 @@ def get_ship_data_selenium(mmsi: str, headless: bool = True, comparison_id: str 
         logger.error(f"Error scraping ship data: {e}")
         raise
     finally:
-        scraper.cleanup()
+        scraper.close()
 
 
 if __name__ == "__main__":
