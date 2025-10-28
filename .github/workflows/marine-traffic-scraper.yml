@@ -18,10 +18,20 @@ on:
         type: boolean
         default: true
       send_to_posthog:
-        description: 'Send scraped data to PostHog'
+        description: 'Send data to PostHog'
         required: false
         type: boolean
         default: true
+      fetch_datadocked:
+        description: 'Fetch data from Datadocked API'
+        required: false
+        type: boolean
+        default: false
+      fetch_datadocked_satellite:
+        description: 'Fetch data from Datadocked Satellite API'
+        required: false
+        type: boolean
+        default: false
 
   # Allow triggering via API/webhook from your backend
   repository_dispatch:
@@ -92,6 +102,8 @@ jobs:
         echo "COMPARISON_ID=${{ github.event.client_payload.comparison_id }}" >> $GITHUB_ENV
         echo "HEADLESS=${{ github.event.client_payload.headless || 'true' }}" >> $GITHUB_ENV
         echo "SEND_TO_POSTHOG=${{ github.event.client_payload.send_to_posthog || 'true' }}" >> $GITHUB_ENV
+        echo "FETCH_DATADOCKED=${{ github.event.client_payload.fetch_datadocked || 'false' }}" >> $GITHUB_ENV
+        echo "FETCH_DATADOCKED_SATELLITE=${{ github.event.client_payload.fetch_datadocked_satellite || 'false' }}" >> $GITHUB_ENV
     
     - name: Extract inputs from workflow_dispatch
       if: github.event_name == 'workflow_dispatch'
@@ -100,29 +112,37 @@ jobs:
         echo "COMPARISON_ID=${{ github.event.inputs.comparison_id }}" >> $GITHUB_ENV
         echo "HEADLESS=${{ github.event.inputs.headless }}" >> $GITHUB_ENV
         echo "SEND_TO_POSTHOG=${{ github.event.inputs.send_to_posthog }}" >> $GITHUB_ENV
+        echo "FETCH_DATADOCKED=${{ github.event.inputs.fetch_datadocked }}" >> $GITHUB_ENV
+        echo "FETCH_DATADOCKED_SATELLITE=${{ github.event.inputs.fetch_datadocked_satellite }}" >> $GITHUB_ENV
     
     - name: Run MarineTraffic scraper
       env:
         POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
         POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        DATADOCKED_BASE_URL: ${{ secrets.DATADOCKED_BASE_URL }}
+        DATADOCKED_API_KEY: ${{ secrets.DATADOCKED_API_KEY }}
+        DATADOCKED_SATELLITE_API_KEY: ${{ secrets.DATADOCKED_SATELLITE_API_KEY }}
         DISPLAY: :99
       run: |
         # Start virtual display for headless Chrome
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         
-        # Run the scraper
+        # Run the scraper with all arguments
+        ARGS="--mmsi \"${{ env.MMSI }}\" --headless --send-to-posthog"
+        
         if [ -n "${{ env.COMPARISON_ID }}" ]; then
-          python github_action_scraper.py \
-            --mmsi "${{ env.MMSI }}" \
-            --comparison-id "${{ env.COMPARISON_ID }}" \
-            --headless \
-            --send-to-posthog
-        else
-          python github_action_scraper.py \
-            --mmsi "${{ env.MMSI }}" \
-            --headless \
-            --send-to-posthog
+          ARGS="$ARGS --comparison-id \"${{ env.COMPARISON_ID }}\""
         fi
+        
+        if [ "${{ env.FETCH_DATADOCKED }}" = "true" ]; then
+          ARGS="$ARGS --fetch-datadocked"
+        fi
+        
+        if [ "${{ env.FETCH_DATADOCKED_SATELLITE }}" = "true" ]; then
+          ARGS="$ARGS --fetch-datadocked-satellite"
+        fi
+        
+        python github_action_scraper.py $ARGS
     
     - name: Upload logs on failure
       if: failure()

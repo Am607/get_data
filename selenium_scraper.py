@@ -1152,7 +1152,7 @@ class SeleniumMarineTrafficScraper:
             # Send to PostHog
             posthog.capture(
                 distinct_id="selenium_scraper",
-                event="marine_traffic_scrape",
+                event="local_comparison",
                 properties=posthog_properties,
                 timestamp=timestamp_dt
             )
