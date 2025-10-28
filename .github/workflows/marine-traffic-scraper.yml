@@ -1,0 +1,106 @@
+name: MarineTraffic Selenium Scraper
+
+on:
+  workflow_dispatch:
+    inputs:
+      mmsi:
+        description: 'Ship MMSI number'
+        required: true
+        type: string
+      comparison_id:
+        description: 'Comparison ID for PostHog tracking'
+        required: false
+        type: string
+        default: ''
+      headless:
+        description: 'Run browser in headless mode'
+        required: false
+        type: boolean
+        default: true
+      send_to_posthog:
+        description: 'Send scraped data to PostHog'
+        required: false
+        type: boolean
+        default: true
+
+  # Allow triggering via API/webhook from your backend
+  repository_dispatch:
+    types: [scrape-marine-traffic]
+
+jobs:
+  scrape-marine-traffic:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip xvfb
+        
+        # Install Chrome
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # Install ChromeDriver
+        CHROME_VERSION=$(google-chrome --version | cut -d " " -f3 | cut -d "." -f1)
+        CHROMEDRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}")
+        wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip"
+        sudo unzip /tmp/chromedriver.zip -d /usr/local/bin/
+        sudo chmod +x /usr/local/bin/chromedriver
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Extract inputs from repository_dispatch
+      if: github.event_name == 'repository_dispatch'
+      run: |
+        echo "MMSI=${{ github.event.client_payload.mmsi }}" >> $GITHUB_ENV
+        echo "COMPARISON_ID=${{ github.event.client_payload.comparison_id }}" >> $GITHUB_ENV
+        echo "HEADLESS=${{ github.event.client_payload.headless || 'true' }}" >> $GITHUB_ENV
+        echo "SEND_TO_POSTHOG=${{ github.event.client_payload.send_to_posthog || 'true' }}" >> $GITHUB_ENV
+    
+    - name: Extract inputs from workflow_dispatch
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        echo "MMSI=${{ github.event.inputs.mmsi }}" >> $GITHUB_ENV
+        echo "COMPARISON_ID=${{ github.event.inputs.comparison_id }}" >> $GITHUB_ENV
+        echo "HEADLESS=${{ github.event.inputs.headless }}" >> $GITHUB_ENV
+        echo "SEND_TO_POSTHOG=${{ github.event.inputs.send_to_posthog }}" >> $GITHUB_ENV
+    
+    - name: Run MarineTraffic scraper
+      env:
+        POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+        POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+        DISPLAY: :99
+      run: |
+        # Start virtual display for headless Chrome
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+        
+        # Run the scraper
+        python github_action_scraper.py \
+          --mmsi "${{ env.MMSI }}" \
+          --comparison-id "${{ env.COMPARISON_ID }}" \
+          $([ "${{ env.HEADLESS }}" = "true" ] && echo "--headless") \
+          $([ "${{ env.SEND_TO_POSTHOG }}" = "true" ] && echo "--send-to-posthog")
+    
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: scraper-logs
+        path: |
+          *.log
+          /tmp/chrome_debug.log
+        retention-days: 7
