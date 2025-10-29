@@ -23,8 +23,17 @@ def fetch_datadocked_data(mmsi: str, api_key: str, base_url: str, data_type: str
     """Fetch data from Datadocked API"""
     try:
         logger.warning(f"[{data_type.upper()}] FETCHED - Calling {data_type} API for MMSI {mmsi}")
-        params = {"imo_or_mmsi": mmsi}
+        
+        # Clean MMSI - remove quotes if present
+        clean_mmsi = mmsi.strip('"') if isinstance(mmsi, str) else str(mmsi)
+        logger.info(f"[{data_type.upper()}] CLEANED MMSI: {clean_mmsi}")
+        
+        params = {"imo_or_mmsi": clean_mmsi}
         headers = {"api_key": api_key}
+        
+        logger.info(f"[{data_type.upper()}] API URL: {base_url}get-vessel-location")
+        logger.info(f"[{data_type.upper()}] PARAMS: {params}")
+        logger.info(f"[{data_type.upper()}] HEADERS: api_key=***")  # Hide actual key in logs
         
         api_result = requests.get(f"{base_url}get-vessel-location", params=params, headers=headers, timeout=20)
         
@@ -34,8 +43,21 @@ def fetch_datadocked_data(mmsi: str, api_key: str, base_url: str, data_type: str
             
             if response_json:  # Check if response is not empty
                 # Check if the response contains valid vessel data
-                if response_json.get("detail") or (response_json.get("mmsi") and response_json.get("latitude") and response_json.get("longitude")):
-                    logger.info(f"[{data_type.upper()}] SUCCESS - Got valid data for MMSI {mmsi}")
+                detail = response_json.get("detail")
+                if detail:
+                    # Check if detail has actual vessel data (not all None values)
+                    mmsi = detail.get("mmsi")
+                    lat = detail.get("latitude")
+                    lon = detail.get("longitude")
+                    
+                    if mmsi is not None and str(mmsi).strip() != "None" and lat is not None and lon is not None:
+                        logger.info(f"[{data_type.upper()}] SUCCESS - Got valid data for MMSI {mmsi}")
+                        return response_json
+                    else:
+                        logger.warning(f"[{data_type.upper()}] NO VESSEL DATA - API returned detail but all values are None/empty for MMSI {mmsi}")
+                        return None
+                elif (response_json.get("mmsi") and response_json.get("latitude") and response_json.get("longitude")):
+                    logger.info(f"[{data_type.upper()}] SUCCESS - Got valid data for MMSI {response_json.get('mmsi')}")
                     return response_json
                 else:
                     logger.warning(f"[{data_type.upper()}] NO VESSEL DATA - API returned response but no vessel data for MMSI {mmsi}")
