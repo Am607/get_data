@@ -170,6 +170,12 @@ class VesselFinderScraper:
             if not self.login():
                 raise Exception("Failed to login to VesselFinder")
         
+        # Clean MMSI/IMO - remove quotes if present
+        if mmsi:
+            mmsi = str(mmsi).strip('"').strip()
+        if imo:
+            imo = str(imo).strip('"').strip()
+        
         # Construct URL
         if mmsi:
             url = f"https://www.vesselfinder.com/pro/map#vessel-details?imo=0&mmsi={mmsi}"
@@ -184,7 +190,7 @@ class VesselFinderScraper:
         
         # Initialize vessel data
         vessel_data = {
-            'provider': 'VesselFinder',
+            'provider': 'vesselfinder_data',
             'mmsi': mmsi,
             'imo': imo,
             'name': None,
@@ -200,7 +206,7 @@ class VesselFinderScraper:
             'destination': None,
             'timestamp': None,
             'comparison_id': comparison_id,
-            'data_source': 'VesselFinder',
+            'data_source': 'vesselfinder_data',
             'length': None,
             'width': None,
             'flag': None,
@@ -213,19 +219,30 @@ class VesselFinderScraper:
             self.driver.get(url)
             
             # Wait for page to load
-            time.sleep(5)
+            time.sleep(8)
             
             # Wait for vessel details to load
             try:
-                WebDriverWait(self.driver, 20).until(
+                WebDriverWait(self.driver, 30).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body"))
                 )
-                time.sleep(8)  # Additional wait for dynamic content and API calls
+                logger.info("Page body loaded, waiting for vessel data...")
+                time.sleep(12)  # Additional wait for dynamic content and API calls
             except TimeoutException:
                 logger.warning("Page load timeout")
             
             # Wait for map and vessel data to load
-            time.sleep(3)
+            logger.info("Waiting for map and vessel markers to load...")
+            time.sleep(5)
+            
+            # Try to wait for vessel info panel
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div[class*='vessel'], div[class*='ship'], div[class*='info']"))
+                )
+                logger.info("Vessel info panel detected")
+            except TimeoutException:
+                logger.warning("Vessel info panel not detected, continuing anyway...")
             
             # Extract data from network requests (API calls) - PRIORITY
             logger.info("Extracting data from network requests...")
@@ -250,7 +267,7 @@ class VesselFinderScraper:
                     distinct_id=f"vesselfinder_{identifier}",
                     event='vessel_data_scraped',
                     properties={
-                        'provider': 'VesselFinder',
+                        'provider': 'vesselfinder_data',
                         'identifier_type': identifier_type,
                         'identifier': identifier,
                         'success': True
@@ -274,7 +291,7 @@ class VesselFinderScraper:
                     distinct_id=f"vesselfinder_{identifier}",
                     event='vessel_data_scrape_failed',
                     properties={
-                        'provider': 'VesselFinder',
+                        'provider': 'vesselfinder_data',
                         'identifier_type': identifier_type,
                         'identifier': identifier,
                         'error': str(e)
@@ -403,14 +420,86 @@ class VesselFinderScraper:
             
             # Extract vessel name from title or headings
             try:
-                h1_elements = self.driver.find_elements(By.TAG_NAME, 'h1')
-                for h1 in h1_elements:
-                    text = h1.text.strip()
-                    if text and len(text) > 2 and not vessel_data['name']:
-                        vessel_data['name'] = text
+                # Try multiple selectors for vessel name
+                name_selectors = [
+                    'h1',
+                    'h2',
+                    '.vessel-name',
+                    '.ship-name',
+                    'div[class*="vessel"] h1',
+                    'div[class*="ship"] h1',
+                    'span[class*="name"]'
+                ]
+                
+                for selector in name_selectors:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        for element in elements:
+                            text = element.text.strip()
+                            if text and len(text) > 2 and text.lower() not in ['vesselfinder', 'vessel finder', 'map']:
+                                if not vessel_data['name'] or vessel_data['name'] == 'VesselFinder':
+                                    vessel_data['name'] = text
+                                    logger.info(f"Found vessel name from {selector}: {text}")
+                                    break
+                    except:
+                        continue
+                    if vessel_data['name'] and vessel_data['name'] != 'VesselFinder':
                         break
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error extracting vessel name: {e}")
+            
+            # Try to extract from all visible text using regex patterns
+            try:
+                # Look for speed in various formats
+                if not vessel_data['speed']:
+                    speed_patterns = [
+                        r'speed[:\s]+(\d+\.?\d*)\s*(?:kn|knots|kt)?',
+                        r'sog[:\s]+(\d+\.?\d*)',
+                        r'(\d+\.?\d*)\s*(?:kn|knots)',
+                    ]
+                    for pattern in speed_patterns:
+                        matches = re.findall(pattern, body_text, re.IGNORECASE)
+                        if matches:
+                            try:
+                                vessel_data['speed'] = float(matches[0])
+                                logger.info(f"Found speed from text: {vessel_data['speed']}")
+                                break
+                            except:
+                                pass
+                
+                # Look for course
+                if not vessel_data['course']:
+                    course_patterns = [
+                        r'course[:\s]+(\d+\.?\d*)\s*°?',
+                        r'cog[:\s]+(\d+\.?\d*)',
+                    ]
+                    for pattern in course_patterns:
+                        matches = re.findall(pattern, body_text, re.IGNORECASE)
+                        if matches:
+                            try:
+                                vessel_data['course'] = float(matches[0])
+                                logger.info(f"Found course from text: {vessel_data['course']}")
+                                break
+                            except:
+                                pass
+                
+                # Look for heading
+                if not vessel_data['heading']:
+                    heading_patterns = [
+                        r'heading[:\s]+(\d+\.?\d*)\s*°?',
+                        r'hdg[:\s]+(\d+\.?\d*)',
+                    ]
+                    for pattern in heading_patterns:
+                        matches = re.findall(pattern, body_text, re.IGNORECASE)
+                        if matches:
+                            try:
+                                vessel_data['heading'] = float(matches[0])
+                                logger.info(f"Found heading from text: {vessel_data['heading']}")
+                                break
+                            except:
+                                pass
+            except Exception as e:
+                logger.warning(f"Error extracting from body text: {e}")
             
             # Look for data in tables or lists
             try:
@@ -579,7 +668,7 @@ class VesselFinderScraper:
             
             # Prepare PostHog properties matching the format from github_action_scraper
             posthog_properties = {
-                "provider": "VesselFinder",
+                "provider": "vesselfinder_data",
                 "mmsi": str(vessel_data.get("mmsi", "")),
                 "name": vessel_data.get("name"),
                 "callsign": vessel_data.get("callsign"),
@@ -595,7 +684,7 @@ class VesselFinderScraper:
                 "timestamp": timestamp_dt.isoformat(),
                 "imo": vessel_data.get("imo"),
                 "comparison_id": comparison_id,
-                "data_source": "VesselFinder"
+                "data_source": "vesselfinder_data"
             }
             
             logger.info(f"Sending VesselFinder data to PostHog with comparison_id: {comparison_id}")

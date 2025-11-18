@@ -43,7 +43,7 @@ def send_to_posthog(data: dict, comparison_id: str = None):
         
         # Format data according to PostHog specification
         posthog_properties = {
-            "provider": "VesselFinder",
+            "provider": "vesselfinder_data",
             "mmsi": str(mmsi_value) if mmsi_value else str(data.get("mmsi", "")),
             "name": data.get("name"),
             "callsign": data.get("callsign"),
@@ -59,7 +59,7 @@ def send_to_posthog(data: dict, comparison_id: str = None):
             "timestamp": timestamp_dt.isoformat(),
             "imo": data.get("imo"),
             "comparison_id": comparison_id,
-            "data_source": "VesselFinder"
+            "data_source": "vesselfinder_data"
         }
         
         logger.info(f"PostHog properties to send: {posthog_properties}")
