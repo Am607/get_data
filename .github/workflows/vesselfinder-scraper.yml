@@ -1,151 +1,151 @@
-name: VesselFinder Scraper
+# name: VesselFinder Scraper
 
-on:
-  workflow_dispatch:
-    inputs:
-      mmsi:
-        description: 'Ship MMSI number'
-        required: false
-        type: string
-      imo:
-        description: 'Ship IMO number'
-        required: false
-        type: string
-      comparison_id:
-        description: 'Comparison ID for PostHog tracking'
-        required: false
-        type: string
-        default: ''
-      headless:
-        description: 'Run browser in headless mode'
-        required: false
-        type: boolean
-        default: true
-      send_to_posthog:
-        description: 'Send data to PostHog'
-        required: false
-        type: boolean
-        default: true
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       mmsi:
+#         description: 'Ship MMSI number'
+#         required: false
+#         type: string
+#       imo:
+#         description: 'Ship IMO number'
+#         required: false
+#         type: string
+#       comparison_id:
+#         description: 'Comparison ID for PostHog tracking'
+#         required: false
+#         type: string
+#         default: ''
+#       headless:
+#         description: 'Run browser in headless mode'
+#         required: false
+#         type: boolean
+#         default: true
+#       send_to_posthog:
+#         description: 'Send data to PostHog'
+#         required: false
+#         type: boolean
+#         default: true
 
-  # Allow triggering via API/webhook from your backend
-  repository_dispatch:
-    types: [scrape-vesselfinder]
+#   # Allow triggering via API/webhook from your backend
+#   repository_dispatch:
+#     types: [scrape-vesselfinder]
 
-jobs:
-  scrape-vesselfinder:
-    runs-on: ubuntu-latest
+# jobs:
+#   scrape-vesselfinder:
+#     runs-on: ubuntu-latest
     
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+#     steps:
+#     - name: Checkout repository
+#       uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
+#     - name: Set up Python
+#       uses: actions/setup-python@v5
+#       with:
+#         python-version: '3.11'
+#         cache: 'pip'
     
-    - name: Setup Chrome and ChromeDriver
-      uses: browser-actions/setup-chrome@v1
-      with:
-        chrome-version: stable
+#     - name: Setup Chrome and ChromeDriver
+#       uses: browser-actions/setup-chrome@v1
+#       with:
+#         chrome-version: stable
     
-    - name: Install ChromeDriver
-      run: |
-        # Get installed Chrome version
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
-        echo "Chrome version: $CHROME_VERSION"
-        MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d "." -f1)
+#     - name: Install ChromeDriver
+#       run: |
+#         # Get installed Chrome version
+#         CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+#         echo "Chrome version: $CHROME_VERSION"
+#         MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d "." -f1)
         
-        # Use a known stable ChromeDriver version
-        CHROMEDRIVER_VERSION="120.0.6099.109"
+#         # Use a known stable ChromeDriver version
+#         CHROMEDRIVER_VERSION="120.0.6099.109"
         
-        # Try to get matching version from Chrome for Testing
-        CHROMEDRIVER_JSON=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" || echo "")
-        if [ ! -z "$CHROMEDRIVER_JSON" ]; then
-          MATCHED_VERSION=$(echo $CHROMEDRIVER_JSON | jq -r ".versions[] | select(.version | startswith(\"$MAJOR_VERSION\")) | .version" | tail -n1 || echo "")
-          if [ ! -z "$MATCHED_VERSION" ]; then
-            CHROMEDRIVER_VERSION=$MATCHED_VERSION
-          fi
-        fi
+#         # Try to get matching version from Chrome for Testing
+#         CHROMEDRIVER_JSON=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" || echo "")
+#         if [ ! -z "$CHROMEDRIVER_JSON" ]; then
+#           MATCHED_VERSION=$(echo $CHROMEDRIVER_JSON | jq -r ".versions[] | select(.version | startswith(\"$MAJOR_VERSION\")) | .version" | tail -n1 || echo "")
+#           if [ ! -z "$MATCHED_VERSION" ]; then
+#             CHROMEDRIVER_VERSION=$MATCHED_VERSION
+#           fi
+#         fi
         
-        echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
+#         echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
         
-        # Download and install ChromeDriver
-        wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
-        unzip -q /tmp/chromedriver.zip -d /tmp/
-        sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
-        sudo chmod +x /usr/local/bin/chromedriver
-        rm -rf /tmp/chromedriver-linux64 /tmp/chromedriver.zip
+#         # Download and install ChromeDriver
+#         wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROMEDRIVER_VERSION}/linux64/chromedriver-linux64.zip"
+#         unzip -q /tmp/chromedriver.zip -d /tmp/
+#         sudo mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver
+#         sudo chmod +x /usr/local/bin/chromedriver
+#         rm -rf /tmp/chromedriver-linux64 /tmp/chromedriver.zip
         
-        # Verify
-        chromedriver --version
+#         # Verify
+#         chromedriver --version
     
-    - name: Install Xvfb for headless display
-      run: sudo apt-get install -y -qq xvfb
+#     - name: Install Xvfb for headless display
+#       run: sudo apt-get install -y -qq xvfb
     
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+#     - name: Install Python dependencies
+#       run: |
+#         python -m pip install --upgrade pip
+#         pip install -r requirements.txt
     
-    - name: Extract inputs from repository_dispatch
-      if: github.event_name == 'repository_dispatch'
-      run: |
-        echo "MMSI=${{ github.event.client_payload.mmsi }}" >> $GITHUB_ENV
-        echo "IMO=${{ github.event.client_payload.imo }}" >> $GITHUB_ENV
-        echo "COMPARISON_ID=${{ github.event.client_payload.comparison_id }}" >> $GITHUB_ENV
-        echo "HEADLESS=${{ github.event.client_payload.headless || 'true' }}" >> $GITHUB_ENV
-        echo "SEND_TO_POSTHOG=${{ github.event.client_payload.send_to_posthog || 'true' }}" >> $GITHUB_ENV
+#     - name: Extract inputs from repository_dispatch
+#       if: github.event_name == 'repository_dispatch'
+#       run: |
+#         echo "MMSI=${{ github.event.client_payload.mmsi }}" >> $GITHUB_ENV
+#         echo "IMO=${{ github.event.client_payload.imo }}" >> $GITHUB_ENV
+#         echo "COMPARISON_ID=${{ github.event.client_payload.comparison_id }}" >> $GITHUB_ENV
+#         echo "HEADLESS=${{ github.event.client_payload.headless || 'true' }}" >> $GITHUB_ENV
+#         echo "SEND_TO_POSTHOG=${{ github.event.client_payload.send_to_posthog || 'true' }}" >> $GITHUB_ENV
     
-    - name: Extract inputs from workflow_dispatch
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        echo "MMSI=${{ github.event.inputs.mmsi }}" >> $GITHUB_ENV
-        echo "IMO=${{ github.event.inputs.imo }}" >> $GITHUB_ENV
-        echo "COMPARISON_ID=${{ github.event.inputs.comparison_id }}" >> $GITHUB_ENV
-        echo "HEADLESS=${{ github.event.inputs.headless }}" >> $GITHUB_ENV
-        echo "SEND_TO_POSTHOG=${{ github.event.inputs.send_to_posthog }}" >> $GITHUB_ENV
+#     - name: Extract inputs from workflow_dispatch
+#       if: github.event_name == 'workflow_dispatch'
+#       run: |
+#         echo "MMSI=${{ github.event.inputs.mmsi }}" >> $GITHUB_ENV
+#         echo "IMO=${{ github.event.inputs.imo }}" >> $GITHUB_ENV
+#         echo "COMPARISON_ID=${{ github.event.inputs.comparison_id }}" >> $GITHUB_ENV
+#         echo "HEADLESS=${{ github.event.inputs.headless }}" >> $GITHUB_ENV
+#         echo "SEND_TO_POSTHOG=${{ github.event.inputs.send_to_posthog }}" >> $GITHUB_ENV
     
-    - name: Run VesselFinder scraper
-      env:
-        VESSELFINDER_EMAIL: ${{ secrets.VESSELFINDER_EMAIL }}
-        VESSELFINDER_PASSWORD: ${{ secrets.VESSELFINDER_PASSWORD }}
-        POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
-        POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
-        DISPLAY: :99
-      run: |
-        # Start virtual display for headless Chrome
-        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+#     - name: Run VesselFinder scraper
+#       env:
+#         VESSELFINDER_EMAIL: ${{ secrets.VESSELFINDER_EMAIL }}
+#         VESSELFINDER_PASSWORD: ${{ secrets.VESSELFINDER_PASSWORD }}
+#         POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+#         POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
+#         DISPLAY: :99
+#       run: |
+#         # Start virtual display for headless Chrome
+#         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         
-        # Build arguments
-        ARGS="--headless"
+#         # Build arguments
+#         ARGS="--headless"
         
-        if [ -n "${{ env.MMSI }}" ]; then
-          ARGS="$ARGS --mmsi \"${{ env.MMSI }}\""
-        fi
+#         if [ -n "${{ env.MMSI }}" ]; then
+#           ARGS="$ARGS --mmsi \"${{ env.MMSI }}\""
+#         fi
         
-        if [ -n "${{ env.IMO }}" ]; then
-          ARGS="$ARGS --imo \"${{ env.IMO }}\""
-        fi
+#         if [ -n "${{ env.IMO }}" ]; then
+#           ARGS="$ARGS --imo \"${{ env.IMO }}\""
+#         fi
         
-        if [ -n "${{ env.COMPARISON_ID }}" ]; then
-          ARGS="$ARGS --comparison-id \"${{ env.COMPARISON_ID }}\""
-        fi
+#         if [ -n "${{ env.COMPARISON_ID }}" ]; then
+#           ARGS="$ARGS --comparison-id \"${{ env.COMPARISON_ID }}\""
+#         fi
         
-        if [ "${{ env.SEND_TO_POSTHOG }}" = "true" ]; then
-          ARGS="$ARGS --send-to-posthog"
-        fi
+#         if [ "${{ env.SEND_TO_POSTHOG }}" = "true" ]; then
+#           ARGS="$ARGS --send-to-posthog"
+#         fi
         
-        # Run the scraper
-        python vesselfinder_action_scraper.py $ARGS
+#         # Run the scraper
+#         python vesselfinder_action_scraper.py $ARGS
     
-    - name: Upload logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: vesselfinder-scraper-logs
-        path: |
-          *.log
-          /tmp/chrome_debug.log
-        retention-days: 7
+#     - name: Upload logs on failure
+#       if: failure()
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: vesselfinder-scraper-logs
+#         path: |
+#           *.log
+#           /tmp/chrome_debug.log
+#         retention-days: 7
